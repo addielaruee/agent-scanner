@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Secrets / environment — never commit
+.env
+.env.*
+*.local
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Python (for when the build starts)
+venv/
+__pycache__/
+*.pyc
+
+# Node (for when the build starts)
+node_modules/
+
+# Private working notes — raw strategy scratchpad, not for public release.
+# Remove this line if you decide you want it tracked.
+context/mastermind.md
