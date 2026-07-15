@@ -21,3 +21,5 @@ node_modules/
 # Private working notes — raw strategy scratchpad, not for public release.
 # Remove this line if you decide you want it tracked.
 context/mastermind.md
+CLAUDE.md
+context/
