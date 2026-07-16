@@ -18,6 +18,16 @@ __pycache__/
 # Node (for when the build starts)
 node_modules/
 
+# Next.js
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
 # Private working notes — raw strategy scratchpad, not for public release.
 # Remove this line if you decide you want it tracked.
 context/mastermind.md
