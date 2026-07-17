@@ -28,6 +28,9 @@ next-env.d.ts
 # Vercel
 .vercel
 
+# Generated agent-run traces — not source code, regenerate by running the agent
+runs/
+
 # Private working notes — raw strategy scratchpad, not for public release.
 # Remove this line if you decide you want it tracked.
 context/mastermind.md

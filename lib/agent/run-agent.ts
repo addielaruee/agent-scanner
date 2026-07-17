@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createRecorder } from "../trace/recorder";
 
 const MODEL = "claude-opus-4-8";
 const MAX_LOOPS = 10;
@@ -8,7 +9,13 @@ const MAX_LOOPS = 10;
 const SYSTEM_PROMPT =
   "You are a helpful assistant. Complete the user's task using the tools available to you.";
 
-export async function runAgent(task: string): Promise<string> {
+// `recorder` defaults to a fresh one, but a caller can pass its own so it can
+// read back `recorder.getSpans()` after the run finishes (this is how a
+// future runner will build and save a full trace file).
+export async function runAgent(
+  task: string,
+  recorder: ReturnType<typeof createRecorder> = createRecorder()
+): Promise<string> {
   const anthropic = new Anthropic();
 
   // The MCP client spawns fixtures/servers/basic-tools.ts as a subprocess and
@@ -28,9 +35,24 @@ export async function runAgent(task: string): Promise<string> {
       input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
     }));
 
+    // The run starts with the benign task the user gave the agent. Record it
+    // as the first span — start and end are the same instant since nothing
+    // happens yet, it's just where the run begins.
+    recorder.startSpan("user_task", "Task given to agent");
+    recorder.endSpan({ input: task });
+
     const messages: Anthropic.MessageParam[] = [{ role: "user", content: task }];
 
+    // Tracks the exact text the agent is about to react to on each turn:
+    // the original task on the first loop, then whatever the tools returned
+    // after that. Recorded as detail.input on each llm_thought span below —
+    // this is what would show a hidden instruction that fooled the agent.
+    let lastSeenText = task;
+
     for (let i = 0; i < MAX_LOOPS; i++) {
+      // llm_thought: Claude looks at lastSeenText (plus the conversation so
+      // far) and decides whether to call a tool or give a final answer.
+      recorder.startSpan("llm_thought", "Claude decides what to do next");
       const response = await anthropic.messages.create({
         model: MODEL,
         max_tokens: 1024,
@@ -38,6 +60,7 @@ export async function runAgent(task: string): Promise<string> {
         tools,
         messages,
       });
+      recorder.endSpan({ input: lastSeenText });
 
       messages.push({ role: "assistant", content: response.content });
 
@@ -45,7 +68,13 @@ export async function runAgent(task: string): Promise<string> {
         const textBlock = response.content.find(
           (block): block is Anthropic.TextBlock => block.type === "text"
         );
-        return textBlock?.text ?? "";
+        const finalText = textBlock?.text ?? "";
+
+        // final_response: the agent is done — this is the answer it settled on.
+        recorder.startSpan("final_response", "Agent's final answer");
+        recorder.endSpan({ responseText: finalText });
+
+        return finalText;
       }
 
       const toolUseBlocks = response.content.filter(
@@ -53,7 +82,13 @@ export async function runAgent(task: string): Promise<string> {
       );
 
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      const toolOutputTexts: string[] = [];
+
       for (const toolUse of toolUseBlocks) {
+        // tool_call: the agent is invoking a tool with specific arguments.
+        recorder.startSpan("tool_call", `Called ${toolUse.name}`);
+        recorder.endSpan({ toolName: toolUse.name, toolArgs: toolUse.input });
+
         const result = await mcpClient.callTool({
           name: toolUse.name,
           arguments: toolUse.input as Record<string, unknown>,
@@ -68,14 +103,22 @@ export async function runAgent(task: string): Promise<string> {
               .join("\n")
           : String(result.content);
 
+        // tool_result: what the tool handed back. `input` is set to the same
+        // text as `toolOutput` because this is exactly what the agent will
+        // read on the next loop — the moment a hidden instruction could hide.
+        recorder.startSpan("tool_result", `Result from ${toolUse.name}`);
+        recorder.endSpan({ toolName: toolUse.name, toolOutput: content, input: content });
+
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUse.id,
           content,
         });
+        toolOutputTexts.push(content);
       }
 
       messages.push({ role: "user", content: toolResults });
+      lastSeenText = toolOutputTexts.join("\n"); // what Claude will see next
     }
 
     // Safety valve tripped: the agent used all MAX_LOOPS iterations without a final answer.
