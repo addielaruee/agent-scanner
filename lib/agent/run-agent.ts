@@ -12,17 +12,21 @@ const SYSTEM_PROMPT =
 // `recorder` defaults to a fresh one, but a caller can pass its own so it can
 // read back `recorder.getSpans()` after the run finishes (this is how a
 // future runner will build and save a full trace file).
+// `serverPath` defaults to the benign Phase-1 server, but an attack runner
+// can point it at a poisoned server instead — that's how a scenario's
+// hostile tools/content get "wired in" without changing the agent loop itself.
 export async function runAgent(
   task: string,
-  recorder: ReturnType<typeof createRecorder> = createRecorder()
+  recorder: ReturnType<typeof createRecorder> = createRecorder(),
+  serverPath: string = "fixtures/servers/basic-tools.ts"
 ): Promise<string> {
   const anthropic = new Anthropic();
 
-  // The MCP client spawns fixtures/servers/basic-tools.ts as a subprocess and
-  // talks to it over stdin/stdout (the StdioServerTransport on the other end).
+  // The MCP client spawns the given server file as a subprocess and talks to
+  // it over stdin/stdout (the StdioServerTransport on the other end).
   const transport = new StdioClientTransport({
     command: "npx",
-    args: ["tsx", "fixtures/servers/basic-tools.ts"],
+    args: ["tsx", serverPath],
   });
   const mcpClient = new Client({ name: "agentscanner-target-agent", version: "1.0.0" });
   await mcpClient.connect(transport);
