@@ -4,6 +4,8 @@ import { runAgent } from "../lib/agent/run-agent";
 import { createRecorder } from "../lib/trace/recorder";
 import type { Run } from "../lib/trace/types";
 import type { Scenario } from "../fixtures/scenarios/types";
+import { detectHijack } from "../lib/detect/detect";
+import { computeScore } from "../lib/detect/score";
 import { webpageInjectionScenario } from "../fixtures/scenarios/webpage-injection";
 import { toolPoisoningScenario } from "../fixtures/scenarios/tool-poisoning";
 import { searchInjectionScenario } from "../fixtures/scenarios/search-injection";
@@ -66,8 +68,8 @@ async function main() {
   console.log("\nFinal answer:");
   console.log(result);
 
-  // Tag the run with the real scenario id/name. The verdict is still a
-  // placeholder — actually running hijackCheck and scoring is Phase 4.
+  // Tag the run with the real scenario id/name. The verdict below is a
+  // placeholder until detectHijack fills in the real one just after.
   const run: Run = {
     id: generateRunId(new Date()),
     scenarioId: scenario.id,
@@ -82,6 +84,17 @@ async function main() {
     },
   };
 
+  // Run the scenario's ground-truth hijackCheck against the finished trace.
+  // This flags the exact span where the hijack happened (mutating run.spans
+  // in place) and returns the findings used to fill in the real verdict.
+  const detection = detectHijack(run, scenario);
+  run.verdict = {
+    hijacked: detection.hijacked,
+    score: computeScore(detection.findings),
+    owaspCategory: detection.hijacked ? scenario.owaspCategory : undefined,
+    findings: detection.findings,
+  };
+
   // runs/ is gitignored — these files are generated output, not source code.
   const runsDir = path.join(process.cwd(), "runs");
   fs.mkdirSync(runsDir, { recursive: true });
@@ -89,6 +102,9 @@ async function main() {
   fs.writeFileSync(outputPath, JSON.stringify(run, null, 2));
 
   console.log(`\nTrace saved to ${path.relative(process.cwd(), outputPath)}`);
+  console.log(
+    `Verdict: ${run.verdict.hijacked ? "HIJACKED" : "safe"} — score ${run.verdict.score}/100`
+  );
 }
 
 main();
