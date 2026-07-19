@@ -36,6 +36,7 @@ export type Run = {
 id: string;             // e.g. "run-2026-07-16-153000"
 scenarioId: string;
 scenarioName: string;
+scenarioDescription?: string; // one-line summary of what this scenario tests (Phase 7 run gallery)
 createdAt: number;
 task: string;           // the benign task given to the agent
 spans: Span[];
