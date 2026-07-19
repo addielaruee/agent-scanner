@@ -74,6 +74,7 @@ async function main() {
     id: generateRunId(new Date()),
     scenarioId: scenario.id,
     scenarioName: scenario.name,
+    scenarioDescription: scenario.description,
     createdAt: Date.now(),
     task: scenario.task,
     spans: recorder.getSpans(),
